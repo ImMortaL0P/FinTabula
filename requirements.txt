@@ -1,6 +1,6 @@
-fastapi==0.111.0
-uvicorn==0.30.1
-pdfplumber==0.11.1
-openpyxl==3.1.5
-python-multipart==0.0.9
-google-generativeai==0.8.6
+fastapi
+uvicorn
+pdfplumber>=0.11.1
+openpyxl>=3.1.5
+python-multipart>=0.0.9
+google-generativeai>=0.8.6
