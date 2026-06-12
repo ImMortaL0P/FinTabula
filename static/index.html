@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FinTabula - Financial Statement Table Extractor</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <!-- PDF.js library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+</head>
+<body>
+    <div class="glow-bg"></div>
+    
+    <header class="app-header">
+        <div class="header-main-bar">
+            <div class="logo-container">
+                <svg class="logo-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span class="logo-text">FinTabula</span>
+            </div>
+            <button type="button" class="theme-toggle-btn" id="theme-toggle-btn" aria-label="Toggle Theme">
+                <!-- Theme icon (sun/moon) injected dynamically by JS -->
+            </button>
+        </div>
+        <p class="tagline">Extract and edit financial statements into clean, structured Excel sheets</p>
+    </header>
+
+    <main class="app-container">
+        <!-- STEP 1: Upload Container -->
+        <div class="step-container" id="step-upload">
+            <div class="card upload-card-large">
+                <div class="card-header">
+                    <svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V15"/>
+                        <path d="M17 8L12 3L7 8"/>
+                        <path d="M12 3V15"/>
+                    </svg>
+                    <h2>Upload Financial Statement PDF</h2>
+                </div>
+                <div class="upload-body">
+                    <!-- File Drop Zone -->
+                    <div class="drop-zone-large" id="drop-zone">
+                        <input type="file" id="file-input" accept=".pdf" class="file-input">
+                        <div class="drop-zone-content">
+                            <div class="upload-icon-wrapper-large">
+                                <svg class="upload-icon-large" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                    <polyline points="14 2 14 8 20 8"></polyline>
+                                    <line x1="12" y1="18" x2="12" y2="12"></line>
+                                    <line x1="9" y1="15" x2="15" y2="15"></line>
+                                </svg>
+                            </div>
+                            <p class="drop-text-primary">Drag & drop your PDF file here</p>
+                            <p class="drop-text-secondary">or click to browse from files (PDF format only)</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- STEP 2: Preview & Configuration Container -->
+        <div class="step-container hidden" id="step-config">
+            <div class="config-grid">
+                <!-- Left: PDF Preview Card -->
+                <div class="card" id="preview-card">
+                    <div class="card-header">
+                        <svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                            <circle cx="12" cy="12" r="3"></circle>
+                        </svg>
+                        <h2>PDF Page Preview</h2>
+                    </div>
+                    <div class="preview-container">
+                        <div class="preview-viewport-wrapper">
+                            <canvas id="pdf-preview-canvas"></canvas>
+                            <div class="preview-loading hidden" id="preview-loading">
+                                <span class="spinner"></span>
+                            </div>
+                        </div>
+                        <div class="preview-controls">
+                            <div class="nav-controls">
+                                <button type="button" class="btn btn-secondary btn-sm" id="btn-prev-page" title="Previous page">&larr; Prev</button>
+                                <span class="page-indicator" id="page-indicator">Page 0 of 0</span>
+                                <button type="button" class="btn btn-secondary btn-sm" id="btn-next-page" title="Next page">Next &rarr;</button>
+                            </div>
+                            <div class="zoom-controls">
+                                <button type="button" class="btn btn-secondary btn-sm" id="btn-zoom-out" title="Zoom Out">&minus;</button>
+                                <span class="zoom-indicator" id="zoom-indicator">100%</span>
+                                <button type="button" class="btn btn-secondary btn-sm" id="btn-zoom-in" title="Zoom In">+</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Settings Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="3"></circle>
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                        </svg>
+                        <h2>Extraction Settings</h2>
+                    </div>
+                    <div class="settings-form-container">
+                        <!-- Active File Row -->
+                        <div class="selected-file-badge-inline" id="file-badge">
+                            <svg class="file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                            <span class="file-name" id="file-name">statement.pdf</span>
+                            <button type="button" class="remove-file-btn" id="remove-file-btn" title="Cancel/Change File">&times; Change File</button>
+                        </div>
+
+                        <div class="settings-form">
+                            <!-- Parse Mode Toggle -->
+                            <div class="setting-group">
+                                <label class="setting-label">Extraction Engine</label>
+                                <div class="mode-toggle-container">
+                                    <label class="mode-option active">
+                                        <input type="radio" name="extraction-mode" value="local" checked>
+                                        <div class="option-card">
+                                            <span class="option-title">Local Engine</span>
+                                            <span class="option-desc">Fast vector PDF layout analyzer</span>
+                                        </div>
+                                    </label>
+                                    <label class="mode-option">
+                                        <input type="radio" name="extraction-mode" value="gemini">
+                                        <div class="option-card">
+                                            <span class="option-title">Gemini AI</span>
+                                            <span class="option-desc">Advanced AI parsing for complex grid tables</span>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Gemini API Key (Conditional) -->
+                            <div class="setting-group hidden" id="api-key-group">
+                                <div class="label-with-link">
+                                    <label for="api-key" class="setting-label">Gemini API Key</label>
+                                    <a href="https://aistudio.google.com/app/apikey" target="_blank" class="helper-link">Get key</a>
+                                </div>
+                                <div class="input-password-wrapper">
+                                    <input type="password" id="api-key" placeholder="AIzaSy..." class="text-input">
+                                    <button type="button" class="toggle-password-btn" id="toggle-password-btn">
+                                        <svg class="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Admin Credentials for Gemini AI Mode (Conditional) -->
+                            <div class="setting-group hidden" id="admin-credentials-group">
+                                <label for="admin-user" class="setting-label">Admin Username</label>
+                                <input type="text" id="admin-user" placeholder="Enter Admin Username" class="text-input" style="margin-bottom: 0.75rem;">
+                                
+                                <div class="label-with-link">
+                                    <label for="admin-pass" class="setting-label">Admin Password</label>
+                                </div>
+                                <div class="input-password-wrapper">
+                                    <input type="password" id="admin-pass" placeholder="Enter Admin Password" class="text-input">
+                                    <button type="button" class="toggle-password-btn" id="toggle-admin-password-btn">
+                                        <svg class="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Page Ranges -->
+                            <div class="setting-group">
+                                <label for="page-range" class="setting-label">Pages to Extract</label>
+                                <div class="page-range-input-wrapper">
+                                    <input type="text" id="page-range" placeholder="e.g. 1-3, 5 (blank for all)" class="text-input">
+                                    <button type="button" class="btn btn-secondary btn-sm" id="btn-add-current-page">
+                                        <span>+ Add Current Page (<span id="current-page-num-indicator">1</span>)</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Submit Button -->
+                            <button type="button" class="btn btn-primary btn-glow btn-block" id="extract-btn">
+                                <span>Extract Tables to Excel</span>
+                                <svg class="btn-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Log Card during extraction -->
+            <div class="card hidden" id="log-card" style="margin-top: 1.5rem;">
+                <div class="card-header">
+                    <span class="pulse-indicator"></span>
+                    <h2>Processing Status</h2>
+                </div>
+                <div class="log-console" id="log-console">
+                    <!-- Log lines inserted here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- STEP 3: Workspace Panel (Extracted Tables Editor) -->
+        <div class="step-container hidden" id="step-workspace">
+            <div class="card workspace-card" id="active-workspace">
+                <div class="workspace-header">
+                    <div class="workspace-title-area">
+                        <h2>Extracted Spreadsheet</h2>
+                        <span class="badge" id="tables-count">0 Sheets</span>
+                    </div>
+                    <div class="workspace-actions">
+                        <button type="button" class="btn btn-secondary btn-sm" id="btn-back-to-config">
+                            <span>&larr; Back to PDF Preview</span>
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm" id="btn-add-sheet">
+                            <span>+ Add Sheet</span>
+                        </button>
+                        <button type="button" class="btn btn-danger btn-sm" id="btn-delete-sheet">
+                            <span>Delete Sheet</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Tabs Container -->
+                <div class="sheet-tabs-scroll-wrapper">
+                    <div class="sheet-tabs" id="sheet-tabs">
+                        <!-- Tab buttons dynamically inserted here -->
+                    </div>
+                </div>
+
+                <!-- Tab Toolbar -->
+                <div class="table-toolbar">
+                    <div class="toolbar-left">
+                        <div class="input-inline-group">
+                            <label for="sheet-rename" class="sr-only">Sheet Name</label>
+                            <input type="text" id="sheet-rename" placeholder="Rename Sheet" class="text-input text-input-sm">
+                        </div>
+                    </div>
+                    <div class="toolbar-right">
+                        <button type="button" class="btn btn-secondary btn-sm" id="btn-add-row" title="Add row at the end">
+                            <span>Row +</span>
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm" id="btn-add-col" title="Add column at the end">
+                            <span>Col +</span>
+                        </button>
+                        <button type="button" class="btn btn-danger-outline btn-sm" id="btn-del-row" title="Delete selected/last row">
+                            <span>Row -</span>
+                        </button>
+                        <button type="button" class="btn btn-danger-outline btn-sm" id="btn-del-col" title="Delete selected/last col">
+                            <span>Col -</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Table Content Grid Area -->
+                <div class="spreadsheet-container">
+                    <table class="spreadsheet-grid" id="spreadsheet-grid">
+                        <!-- Head and body inserted here -->
+                    </table>
+                </div>
+
+                <!-- Table Footer & Exports -->
+                <div class="workspace-footer">
+                    <p class="edit-tip">💡 Tip: Every cell is editable. Values will be saved to Excel exactly as displayed.</p>
+                    <div class="export-actions">
+                        <button type="button" class="btn btn-secondary" id="btn-export-csv">Export CSV</button>
+                        <button type="button" class="btn btn-primary btn-glow" id="btn-export-xlsx">
+                            <svg class="excel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                            <span>Download Excel (.xlsx)</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="app-footer-info">
+        <p>FinTabula &bull; Secure Local Data Processing &bull; Developed by <a href="https://www.linkedin.com/in/kumar-mangalam-362a77176/" target="_blank" style="color: var(--color-primary); text-decoration: none; font-weight: 500;">Mangalam</a></p>
+    </footer>
+
+    <!-- Main JavaScript -->
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
