@@ -1,3 +1,16 @@
+---
+title: FinTabula
+emoji: 📊
+colorFrom: green
+colorTo: green
+sdk: gradio
+sdk_version: 6.16.0
+python_version: '3.11'
+app_file: app.py
+pinned: false
+short_description: Modern financial statement table extractor
+---
+
 # FinTabula - Financial Statement Table Extractor
 
 FinTabula is a modern, light, and beautiful web application designed to extract tabular data from financial statements (like Balance Sheets, Income Statements, and Cash Flow Statements) in PDF format and convert them into beautifully styled Excel workbooks or CSV files.
