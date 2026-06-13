@@ -68,8 +68,8 @@ After launching, open your browser and navigate to:
     *   Select **Gemini AI** for complex, multi-page, or scanned statements.
 3.  **Authentication for Gemini AI**:
     *   To unlock the Gemini AI mode, enter the Admin credentials:
-        *   **Admin Username**: `Admin`
-        *   **Admin Password**: `Kukku404#`
+        *   **Admin Username**: `****`
+        *   **Admin Password**: `*******`
     *   Get a free Gemini API Key from [Google AI Studio](https://aistudio.google.com/app/apikey) and enter it in the API Key field.
 4.  **Specify Pages (Optional)**: Input page numbers (e.g. `1-3, 5`) to parse only specific pages.
 5.  **Extract & Edit**: Click **Extract Tables**. Once loaded, edit in the spreadsheet, and download as Excel or CSV.
