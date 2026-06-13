@@ -5,6 +5,7 @@
 // Global Application State
 let appState = {
     selectedFile: null,
+    selectedUrl: null,
     tables: [], // List of {name: str, data: List[List[str]]}
     activeSheetIndex: 0,
     selectedCell: { row: null, col: null },
@@ -21,6 +22,8 @@ let pageNumPending = null;
 // DOM Elements
 const dropZone = document.getElementById('drop-zone');
 const fileInput = document.getElementById('file-input');
+const urlInput = document.getElementById('url-input');
+const urlSubmitBtn = document.getElementById('url-submit-btn');
 const fileBadge = document.getElementById('file-badge');
 const fileNameSpan = document.getElementById('file-name');
 const removeFileBtn = document.getElementById('remove-file-btn');
@@ -59,10 +62,12 @@ const btnExportXlsx = document.getElementById('btn-export-xlsx');
 const themeToggleBtn = document.getElementById('theme-toggle-btn');
 const previewCard = document.getElementById('preview-card');
 const previewCanvas = document.getElementById('pdf-preview-canvas');
+const htmlPreviewFrame = document.getElementById('html-preview-frame');
 const previewLoading = document.getElementById('preview-loading');
 const pageIndicator = document.getElementById('page-indicator');
 const btnPrevPage = document.getElementById('btn-prev-page');
 const btnNextPage = document.getElementById('btn-next-page');
+const previewControls = document.querySelector('.preview-controls');
 const btnAddCurrentPage = document.getElementById('btn-add-current-page');
 const btnZoomIn = document.getElementById('btn-zoom-in');
 const btnZoomOut = document.getElementById('btn-zoom-out');
@@ -141,6 +146,17 @@ function setupEventListeners() {
         e.stopPropagation();
         resetFileInput();
     });
+
+    // URL submit action
+    urlSubmitBtn.addEventListener('click', () => {
+        handleUrlSelect(urlInput.value.trim());
+    });
+    
+    urlInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            handleUrlSelect(urlInput.value.trim());
+        }
+    });
     
     // Engine mode toggle
     modeRadios.forEach(radio => {
@@ -206,6 +222,7 @@ function setupEventListeners() {
     
     // Back to config action
     btnBackToConfig.addEventListener('click', () => {
+        document.body.classList.remove('workspace-active');
         stepWorkspace.classList.add('hidden');
         stepConfig.classList.remove('hidden');
         log('Returned to configuration view.', 'info');
@@ -229,9 +246,13 @@ function setupEventListeners() {
 function handleFileSelect(file) {
     if (!file) return;
     
-    if (file.type !== 'application/pdf' && !file.name.endsWith('.pdf')) {
-        log('Error: Only PDF documents are allowed.', 'error');
-        alert('Please select a valid PDF file.');
+    const nameLower = file.name.toLowerCase();
+    const isPDF = file.type === 'application/pdf' || nameLower.endsWith('.pdf');
+    const isHTML = file.type === 'text/html' || nameLower.endsWith('.html') || nameLower.endsWith('.htm');
+    
+    if (!isPDF && !isHTML) {
+        log('Error: Only PDF and HTML documents are allowed.', 'error');
+        alert('Please select a valid PDF or HTML file.');
         return;
     }
     
@@ -246,13 +267,62 @@ function handleFileSelect(file) {
     stepConfig.classList.remove('hidden');
     stepWorkspace.classList.add('hidden');
     
-    // Load PDF Preview!
-    loadPDF(file);
+    if (isPDF) {
+        previewCanvas.classList.remove('hidden');
+        htmlPreviewFrame.classList.add('hidden');
+        htmlPreviewFrame.srcdoc = '';
+        previewControls.classList.remove('hidden');
+        // Load PDF Preview!
+        loadPDF(file);
+    } else {
+        // Load HTML Preview by first converting it to PDF on the server!
+        previewLoading.classList.remove('hidden');
+        previewCard.classList.remove('hidden');
+        log('Converting HTML file to PDF for preview...', 'info');
+        
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        fetch('/api/convert-html-to-pdf', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(err => { throw new Error(err.detail || 'HTML conversion failed'); });
+            }
+            return response.blob();
+        })
+        .then(blob => {
+            const pdfFileName = file.name.replace(/\.[^/.]+$/, "") + ".pdf";
+            const convertedFile = new File([blob], pdfFileName, { type: 'application/pdf' });
+            
+            appState.selectedFile = convertedFile;
+            fileNameSpan.textContent = convertedFile.name;
+            
+            previewCanvas.classList.remove('hidden');
+            htmlPreviewFrame.classList.add('hidden');
+            htmlPreviewFrame.srcdoc = '';
+            previewControls.classList.remove('hidden');
+            
+            log('HTML converted to PDF successfully. Loading preview...', 'success');
+            loadPDF(convertedFile);
+        })
+        .catch(err => {
+            log(`Error converting HTML to PDF: ${err.message}`, 'error');
+            alert(`Failed to convert HTML to PDF: ${err.message}`);
+            previewLoading.classList.add('hidden');
+            previewCard.classList.add('hidden');
+            resetFileInput();
+        });
+    }
 }
 
 function resetFileInput() {
     appState.selectedFile = null;
+    appState.selectedUrl = null;
     fileInput.value = '';
+    urlInput.value = '';
     extractBtn.disabled = false;
     pageRangeInput.value = '';
     
@@ -261,12 +331,103 @@ function resetFileInput() {
     stepConfig.classList.add('hidden');
     stepWorkspace.classList.add('hidden');
     
+    // Restore default preview card states
+    previewCard.classList.remove('hidden');
+    previewCanvas.classList.remove('hidden');
+    htmlPreviewFrame.classList.add('hidden');
+    htmlPreviewFrame.srcdoc = '';
+    previewControls.classList.remove('hidden');
+    
+    document.body.classList.remove('workspace-active');
+    
     pdfDoc = null;
     currentPageNum = 1;
     totalPageCount = 0;
     zoomScale = 1.0;
     
-    log('File cleared.', 'info');
+    log('Selection cleared.', 'info');
+}
+
+async function handleUrlSelect(url) {
+    if (!url) {
+        alert('Please enter a valid URL.');
+        return;
+    }
+    
+    // Simple URL validation
+    try {
+        new URL(url);
+    } catch (_) {
+        alert('Please enter a valid, absolute URL (e.g., https://example.com/document.pdf or .html).');
+        return;
+    }
+    
+    // Show Loading
+    urlSubmitBtn.disabled = true;
+    urlSubmitBtn.innerHTML = `<span class="spinner"></span> <span>Fetching...</span>`;
+    log(`Attempting to fetch remote document from URL: ${url}`, 'info');
+    
+    // Show loading on preview card
+    previewLoading.classList.remove('hidden');
+    previewCard.classList.remove('hidden');
+    
+    try {
+        const formData = new FormData();
+        formData.append('url', url);
+        
+        const response = await fetch('/api/fetch-doc', {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (!response.ok) {
+            const errorResult = await response.json();
+            throw new Error(errorResult.detail || 'Failed to fetch the document from URL.');
+        }
+        
+        const contentType = response.headers.get('content-type') || '';
+        const isPdf = contentType.toLowerCase().includes('application/pdf');
+        
+        appState.selectedUrl = url;
+        appState.selectedFile = null;
+        fileInput.value = '';
+        fileNameSpan.textContent = url;
+        extractBtn.disabled = false;
+        
+        // Switch view: Hide upload step, show configuration step
+        stepUpload.classList.add('hidden');
+        stepConfig.classList.remove('hidden');
+        stepWorkspace.classList.add('hidden');
+        
+        if (isPdf) {
+            log('PDF document fetched successfully. Loading preview...', 'info');
+            previewCanvas.classList.remove('hidden');
+            htmlPreviewFrame.classList.add('hidden');
+            htmlPreviewFrame.srcdoc = '';
+            previewControls.classList.remove('hidden');
+            
+            const blob = await response.blob();
+            // Call standard loadPDF with the downloaded PDF blob!
+            await loadPDF(blob);
+        } else {
+            log('HTML document fetched successfully. Loading preview...', 'info');
+            previewCanvas.classList.add('hidden');
+            htmlPreviewFrame.classList.remove('hidden');
+            previewControls.classList.add('hidden');
+            
+            const htmlText = await response.text();
+            htmlPreviewFrame.srcdoc = htmlText;
+            previewLoading.classList.add('hidden');
+        }
+    } catch (err) {
+        log(`Error fetching URL: ${err.message}`, 'error');
+        alert(`Failed to fetch document: ${err.message}`);
+        previewCard.classList.add('hidden');
+        previewLoading.classList.add('hidden');
+    } finally {
+        urlSubmitBtn.disabled = false;
+        urlSubmitBtn.innerHTML = `<span>Fetch URL</span>`;
+    }
 }
 
 function updateEngineView() {
@@ -322,7 +483,7 @@ function clearLogs() {
 // API Operations
 // ==========================================================================
 async function runExtraction() {
-    if (!appState.selectedFile) return;
+    if (!appState.selectedFile && !appState.selectedUrl) return;
     
     const mode = getSelectedMode();
     const apiKey = apiKeyInput.value.trim();
@@ -350,14 +511,24 @@ async function runExtraction() {
     logCard.classList.remove('hidden');
     clearLogs();
     log(`Starting table extraction using ${mode === 'gemini' ? 'Gemini AI' : 'Local PDFplumber'}...`, 'info');
-    log(`Document: ${appState.selectedFile.name}`, 'info');
+    
+    if (appState.selectedFile) {
+        log(`Document: ${appState.selectedFile.name}`, 'info');
+    } else if (appState.selectedUrl) {
+        log(`Document URL: ${appState.selectedUrl}`, 'info');
+    }
+    
     if (pageRange) log(`Page constraint: ${pageRange}`, 'info');
     
     setExtractButtonLoading(true);
     
     // Build Form Data
     const formData = new FormData();
-    formData.append('file', appState.selectedFile);
+    if (appState.selectedFile) {
+        formData.append('file', appState.selectedFile);
+    } else if (appState.selectedUrl) {
+        formData.append('url', appState.selectedUrl);
+    }
     formData.append('mode', mode);
     if (pageRange) formData.append('pages', pageRange);
     if (mode === 'gemini' && apiKey) formData.append('api_key', apiKey);
@@ -388,6 +559,7 @@ async function runExtraction() {
         stepConfig.classList.add('hidden');
         logCard.classList.add('hidden');
         stepWorkspace.classList.remove('hidden');
+        document.body.classList.add('workspace-active');
         
         // Show Workspace
         renderWorkspace();

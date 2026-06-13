@@ -4,6 +4,7 @@ import re
 import csv
 import shutil
 import uuid
+import httpx
 from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, status
 from fastapi.responses import StreamingResponse, FileResponse
@@ -12,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
-from parser import extract_tables_local, extract_tables_ai
+from parser import extract_tables_local, extract_tables_ai, extract_tables_from_html_ai, convert_html_to_pdf_local
 
 # Load environment variables
 load_dotenv()
@@ -45,9 +46,105 @@ class ExportRequest(BaseModel):
     tables: List[TableExport]
     format: str = "xlsx"  # "xlsx" or "csv"
 
+@app.post("/api/fetch-doc")
+async def fetch_document(
+    url: str = Form(...)
+):
+    try:
+        headers = {
+            "User-Agent": "FinTabulaApp/1.0 (mangalam.abc@gmail.com)",
+            "Accept-Encoding": "gzip, deflate"
+        }
+        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+        
+        content = response.content
+        content_type = response.headers.get("content-type", "").lower()
+        
+        is_pdf = "application/pdf" in content_type or url.lower().endswith(".pdf") or content.startswith(b"%PDF")
+        
+        if is_pdf:
+            return StreamingResponse(
+                io.BytesIO(content),
+                media_type="application/pdf"
+            )
+        else:
+            try:
+                html_text = content.decode("utf-8", errors="ignore")
+            except Exception:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Unsupported binary file format downloaded from URL."
+                )
+            
+            # Convert HTML to PDF for high fidelity preview
+            temp_pdf_filename = f"{uuid.uuid4()}_converted.pdf"
+            temp_filepath = os.path.join(TEMP_DIR, temp_pdf_filename)
+            try:
+                convert_html_to_pdf_local(html_text, temp_filepath)
+                with open(temp_filepath, "rb") as pdf_file:
+                    pdf_content = pdf_file.read()
+                return StreamingResponse(
+                    io.BytesIO(pdf_content),
+                    media_type="application/pdf"
+                )
+            except Exception as e:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"HTML to PDF conversion failed: {str(e)}"
+                )
+            finally:
+                if temp_filepath and os.path.exists(temp_filepath):
+                    try:
+                        os.remove(temp_filepath)
+                    except Exception:
+                        pass
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to fetch URL content: {str(e)}"
+        )
+
+@app.post("/api/convert-html-to-pdf")
+async def convert_html_to_pdf_endpoint(
+    file: UploadFile = File(...)
+):
+    try:
+        content = await file.read()
+        text_content = content.decode("utf-8", errors="ignore")
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to read HTML file: {str(e)}"
+        )
+        
+    temp_pdf_filename = f"{uuid.uuid4()}_converted.pdf"
+    temp_filepath = os.path.join(TEMP_DIR, temp_pdf_filename)
+    try:
+        convert_html_to_pdf_local(text_content, temp_filepath)
+        with open(temp_filepath, "rb") as pdf_file:
+            pdf_content = pdf_file.read()
+        return StreamingResponse(
+            io.BytesIO(pdf_content),
+            media_type="application/pdf"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"HTML to PDF conversion failed: {str(e)}"
+        )
+    finally:
+        if temp_filepath and os.path.exists(temp_filepath):
+            try:
+                os.remove(temp_filepath)
+            except Exception:
+                pass
+
 @app.post("/api/extract")
 async def extract_tables(
-    file: UploadFile = File(...),
+    file: Optional[UploadFile] = File(None),
+    url: Optional[str] = Form(None),
     mode: str = Form("local"),  # "local" or "gemini"
     pages: Optional[str] = Form(None),
     api_key: Optional[str] = Form(None),
@@ -57,11 +154,10 @@ async def extract_tables(
     # Reload env dynamically to pick up any changes
     load_dotenv(override=True)
     
-    # Validate file format
-    if not file.filename.endswith(".pdf"):
+    if not file and not url:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only PDF files are supported."
+            detail="Either a PDF file upload or a document URL must be provided."
         )
         
     # Resolve API Key: prioritize request payload, fallback to env variable
@@ -85,14 +181,104 @@ async def extract_tables(
                 detail="Gemini API Key is required for AI-powered extraction."
             )
 
-    # Save PDF locally in temp folder
-    temp_filename = f"{uuid.uuid4()}_{file.filename}"
-    temp_filepath = os.path.join(TEMP_DIR, temp_filename)
-    
+    # Save PDF or HTML locally in temp folder
+    temp_filepath = None
     try:
-        with open(temp_filepath, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        if url:
+            # Download URL content
+            try:
+                headers = {
+                    "User-Agent": "FinTabulaApp/1.0 (mangalam.abc@gmail.com)",
+                    "Accept-Encoding": "gzip, deflate"
+                }
+                async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+                    response = await client.get(url, headers=headers)
+                    response.raise_for_status()
+                content = response.content
+                content_type = response.headers.get("content-type", "").lower()
+            except Exception as e:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Failed to download from URL: {str(e)}"
+                )
+
+            # Detect format
+            is_pdf = "application/pdf" in content_type or url.lower().endswith(".pdf") or content.startswith(b"%PDF")
             
+            if is_pdf:
+                # Save PDF to a temp file
+                filename = url.split("/")[-1] or "downloaded.pdf"
+                if not filename.endswith(".pdf"):
+                    filename += ".pdf"
+                temp_filename = f"{uuid.uuid4()}_{filename}"
+                temp_filepath = os.path.join(TEMP_DIR, temp_filename)
+                with open(temp_filepath, "wb") as buffer:
+                    buffer.write(content)
+            else:
+                # Treat as HTML or plain text
+                try:
+                    text_content = content.decode("utf-8", errors="ignore")
+                except Exception:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Downloaded document has unsupported binary format. Only PDF and HTML/text documents are supported."
+                    )
+
+                if mode == "gemini":
+                    tables = extract_tables_from_html_ai(text_content, resolved_api_key)
+                    return {
+                        "success": True,
+                        "filename": url.split("/")[-1] or "document.html",
+                        "mode": mode,
+                        "tables": tables
+                    }
+                else:
+                    # mode == "local": convert html to pdf first
+                    temp_pdf_filename = f"{uuid.uuid4()}_converted.pdf"
+                    temp_filepath = os.path.join(TEMP_DIR, temp_pdf_filename)
+                    convert_html_to_pdf_local(text_content, temp_filepath)
+        else:
+            # Validate file format
+            filename_lower = file.filename.lower()
+            is_html_upload = filename_lower.endswith(".html") or filename_lower.endswith(".htm")
+            is_pdf_upload = filename_lower.endswith(".pdf")
+            
+            if not (is_pdf_upload or is_html_upload):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Only PDF and HTML files are supported."
+                )
+
+            temp_filename = f"{uuid.uuid4()}_{file.filename}"
+            temp_filepath = os.path.join(TEMP_DIR, temp_filename)
+            with open(temp_filepath, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+                
+            if is_html_upload:
+                # Read content
+                with open(temp_filepath, "r", encoding="utf-8", errors="ignore") as f:
+                    text_content = f.read()
+                # Remove the uploaded HTML temp file immediately to avoid leak
+                try:
+                    os.remove(temp_filepath)
+                except Exception:
+                    pass
+                temp_filepath = None
+                
+                if mode == "gemini":
+                    tables = extract_tables_from_html_ai(text_content, resolved_api_key)
+                    return {
+                        "success": True,
+                        "filename": file.filename,
+                        "mode": mode,
+                        "tables": tables
+                    }
+                else:
+                    # mode == "local": convert html to pdf
+                    temp_pdf_filename = f"{uuid.uuid4()}_converted.pdf"
+                    temp_filepath = os.path.join(TEMP_DIR, temp_pdf_filename)
+                    convert_html_to_pdf_local(text_content, temp_filepath)
+                
         # Extract tables
         if mode == "gemini":
             tables = extract_tables_ai(temp_filepath, resolved_api_key, pages)
@@ -101,7 +287,7 @@ async def extract_tables(
             
         return {
             "success": True,
-            "filename": file.filename,
+            "filename": url.split("/")[-1] if url else file.filename,
             "mode": mode,
             "tables": tables
         }
@@ -109,6 +295,8 @@ async def extract_tables(
     except Exception as e:
         import traceback
         traceback.print_exc()
+        if isinstance(e, HTTPException):
+            raise e
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Extraction failed: {str(e)}"
@@ -116,7 +304,7 @@ async def extract_tables(
         
     finally:
         # Clean up temporary file
-        if os.path.exists(temp_filepath):
+        if temp_filepath and os.path.exists(temp_filepath):
             try:
                 os.remove(temp_filepath)
             except Exception as ex:

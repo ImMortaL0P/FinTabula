@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/style.css?v=1.3">
     <!-- PDF.js library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
 </head>
@@ -42,12 +42,12 @@
                         <path d="M17 8L12 3L7 8"/>
                         <path d="M12 3V15"/>
                     </svg>
-                    <h2>Upload Financial Statement PDF</h2>
+                    <h2>Upload Financial Statement (PDF or HTML)</h2>
                 </div>
                 <div class="upload-body">
                     <!-- File Drop Zone -->
                     <div class="drop-zone-large" id="drop-zone">
-                        <input type="file" id="file-input" accept=".pdf" class="file-input">
+                        <input type="file" id="file-input" accept=".pdf,.html,.htm" class="file-input">
                         <div class="drop-zone-content">
                             <div class="upload-icon-wrapper-large">
                                 <svg class="upload-icon-large" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -57,8 +57,26 @@
                                     <line x1="9" y1="15" x2="15" y2="15"></line>
                                 </svg>
                             </div>
-                            <p class="drop-text-primary">Drag & drop your PDF file here</p>
-                            <p class="drop-text-secondary">or click to browse from files (PDF format only)</p>
+                            <p class="drop-text-primary">Drag & drop your PDF or HTML file here</p>
+                            <p class="drop-text-secondary">or click to browse from files</p>
+                        </div>
+                    </div>
+
+                    <!-- Paste URL Area -->
+                    <div class="upload-divider">
+                        <span>OR</span>
+                    </div>
+                    <div class="url-input-container">
+                        <label for="url-input" class="url-input-label">Paste Document Link</label>
+                        <div class="url-input-wrapper">
+                            <svg class="link-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                            </svg>
+                            <input type="url" id="url-input" placeholder="Paste link to PDF or HTML (e.g., https://example.com/report.pdf)" class="text-input url-input">
+                            <button type="button" class="btn btn-primary url-submit-btn" id="url-submit-btn">
+                                <span>Fetch URL</span>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -80,6 +98,7 @@
                     <div class="preview-container">
                         <div class="preview-viewport-wrapper">
                             <canvas id="pdf-preview-canvas"></canvas>
+                            <iframe id="html-preview-frame" class="hidden" style="width: 100%; height: 100%; border: none; background: white; border-radius: var(--radius-sm);"></iframe>
                             <div class="preview-loading hidden" id="preview-loading">
                                 <span class="spinner"></span>
                             </div>
@@ -280,6 +299,6 @@
     </footer>
 
     <!-- Main JavaScript -->
-    <script src="/static/js/app.js"></script>
+    <script src="/static/js/app.js?v=1.3"></script>
 </body>
 </html>

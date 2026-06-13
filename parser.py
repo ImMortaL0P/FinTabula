@@ -411,3 +411,223 @@ def extract_tables_ai(pdf_path: str, api_key: str, pages_str: Optional[str] = No
             uploaded_file.delete()
         except Exception as e:
             print(f"Error deleting temporary file: {e}")
+
+def extract_tables_from_html_ai(html_content: str, api_key: str) -> List[Dict[str, Any]]:
+    """
+    Extracts tables from HTML content using Gemini 1.5 Flash API with structured JSON output.
+    """
+    import google.generativeai as genai
+    import json
+    
+    genai.configure(api_key=api_key)
+    
+    if len(html_content) > 1500000:
+        html_content = html_content[:1500000] + "\n... [HTML Content Truncated due to size] ..."
+        
+    prompt = (
+        "You are an expert financial analyst. Analyze the following HTML document and extract all structured financial tables "
+        "such as the Balance Sheet, Income Statement, Cash Flow Statement, notes disclosures, and other tabular financial data.\n\n"
+        "Here is the HTML content:\n"
+        "```html\n"
+        f"{html_content}\n"
+        "```\n\n"
+        "For each table you find:\n"
+        "1. Identify its name clearly (e.g. 'Consolidated Balance Sheet', 'Segment Revenues', 'Note 5 - Inventory').\n"
+        "2. Extract the table contents exactly as rows and columns. Do not omit rows, totals, or notes within the tables. "
+        "Ensure all cells, numbers, headers, and labels are fully preserved as strings. Clean up any weird symbols but keep the numbers intact."
+    )
+    
+    try:
+        model = genai.GenerativeModel("gemini-2.5-flash")
+        print("Sending HTML request to Gemini 2.5 Flash...")
+        response = model.generate_content(
+            prompt,
+            generation_config=genai.GenerationConfig(
+                response_mime_type="application/json",
+                response_schema=FinancialTablesModel,
+                temperature=0.1,
+            )
+        )
+        
+        result = json.loads(response.text)
+        
+        tables = []
+        for idx, table in enumerate(result.get("tables", [])):
+            name = table.get("name", f"Table {idx + 1}")
+            data = table.get("data", [])
+            cleaned_data = clean_table_data(data)
+            if cleaned_data:
+                tables.append({
+                    "name": name,
+                    "data": cleaned_data,
+                    "page": "AI HTML Extracted",
+                    "source": "gemini"
+                })
+        return tables
+    except Exception as e:
+        print(f"Error extracting tables from HTML: {e}")
+        raise e
+
+from html.parser import HTMLParser
+
+class TableOrientationParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.max_cols = 0
+        self.current_row_cols = 0
+        self.in_row = False
+        self.in_style = False
+        self.style_content = []
+        self.has_landscape_keyword = False
+
+    def handle_starttag(self, tag, attrs):
+        tag_lower = tag.lower()
+        if tag_lower == 'tr':
+            self.in_row = True
+            self.current_row_cols = 0
+        elif tag_lower in ('td', 'th') and self.in_row:
+            colspan = 1
+            for name, value in attrs:
+                if name.lower() == 'colspan':
+                    try:
+                        colspan = int(value)
+                    except ValueError:
+                        pass
+            self.current_row_cols += colspan
+        elif tag_lower == 'style':
+            self.in_style = True
+            
+        for name, value in attrs:
+            if value and 'landscape' in value.lower():
+                self.has_landscape_keyword = True
+
+    def handle_endtag(self, tag):
+        tag_lower = tag.lower()
+        if tag_lower == 'tr':
+            self.in_row = False
+            if self.current_row_cols > self.max_cols:
+                self.max_cols = self.current_row_cols
+        elif tag_lower == 'style':
+            self.in_style = False
+
+    def handle_data(self, data):
+        if self.in_style:
+            self.style_content.append(data)
+
+def detect_html_orientation(html_content: str) -> str:
+    """
+    Detects whether the HTML document should be printed in 'landscape' or 'portrait'.
+    """
+    # 1. Check if the HTML explicitly asks for landscape or contains landscape css
+    if 'landscape' in html_content.lower():
+        parser = TableOrientationParser()
+        try:
+            parser.feed(html_content)
+            if parser.has_landscape_keyword:
+                return 'landscape'
+            
+            style_text = "".join(parser.style_content).lower()
+            if re.search(r'@page[^}]*size\s*:\s*landscape', style_text):
+                return 'landscape'
+        except Exception:
+            pass
+
+    # 2. Check table columns
+    parser = TableOrientationParser()
+    try:
+        parser.feed(html_content)
+        # If any table has 6 or more columns, select landscape orientation
+        if parser.max_cols >= 6:
+            print(f"Detected wide table with {parser.max_cols} columns. Selecting landscape orientation.")
+            return 'landscape'
+    except Exception as e:
+        print(f"Error parsing HTML structure for orientation: {e}")
+        
+    return 'portrait'
+
+def convert_html_to_pdf_local(html_content: str, output_pdf_path: str) -> str:
+    """
+    Converts HTML content to a PDF file using headless Google Chrome.
+    Determines page orientation (landscape vs portrait) dynamically.
+    """
+    import subprocess
+    import tempfile
+    
+    orientation = detect_html_orientation(html_content)
+    
+    # Inject print stylesheet to force orientation and margins
+    print_style = f"""
+    <style type="text/css">
+    @media print {{
+        @page {{
+            size: {orientation};
+            margin: 0.3in 0.3in 0.3in 0.3in;
+        }}
+        body {{
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }}
+        table {{
+            page-break-inside: auto !important;
+        }}
+        tr {{
+            page-break-inside: avoid !important;
+            page-break-after: auto !important;
+        }}
+        thead {{
+            display: table-header-group !important;
+        }}
+        tfoot {{
+            display: table-footer-group !important;
+        }}
+    }}
+    </style>
+    """
+    
+    if "</head>" in html_content:
+        html_content = html_content.replace("</head>", f"{print_style}</head>", 1)
+    elif "<body>" in html_content:
+        html_content = html_content.replace("<body>", f"<body>{print_style}", 1)
+    else:
+        html_content = print_style + html_content
+
+    temp_html_fd, temp_html_path = tempfile.mkstemp(suffix=".html")
+    try:
+        with os.fdopen(temp_html_fd, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+            
+        chrome_path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+        if not os.path.exists(chrome_path):
+            raise FileNotFoundError("Google Chrome was not found at the standard macOS path.")
+            
+        cmd = [
+            chrome_path,
+            "--headless",
+            "--disable-gpu",
+            "--no-pdf-header-footer",
+            f"--print-to-pdf={output_pdf_path}",
+            temp_html_path
+        ]
+        
+        print(f"Running Chrome headless command: {' '.join(cmd)}")
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30)
+        
+        if result.returncode != 0:
+            raise RuntimeError(f"Chrome PDF generation failed: {result.stderr}")
+            
+        if not os.path.exists(output_pdf_path) or os.path.getsize(output_pdf_path) == 0:
+            raise RuntimeError("Chrome PDF generation completed but output file is empty or missing.")
+            
+        print(f"Successfully generated PDF: {output_pdf_path} (orientation: {orientation})")
+        return orientation
+        
+    finally:
+        if os.path.exists(temp_html_path):
+            try:
+                os.remove(temp_html_path)
+            except Exception as e:
+                print(f"Error removing temp HTML file: {e}")
+

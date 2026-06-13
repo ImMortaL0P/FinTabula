@@ -83,11 +83,27 @@ body {
     background-color: var(--bg-base);
     color: var(--text-primary);
     font-family: var(--font-sans);
-    height: 100vh;
+    min-height: 100vh;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
     position: relative;
+}
+
+body.workspace-active {
+    height: 100vh;
+    overflow: hidden;
+}
+
+body.workspace-active .app-container {
+    height: 100%;
+    overflow: hidden;
+}
+
+body.workspace-active .step-container {
+    height: 100%;
+    overflow: hidden;
 }
 
 /* Ambient Background Glow */
@@ -202,7 +218,7 @@ h1, h2, h3, h4 {
     z-index: 10;
     position: relative;
     min-height: 0;
-    height: 100%;
+    height: auto;
 }
 
 /* ==========================================================================
@@ -1179,7 +1195,7 @@ h1, h2, h3, h4 {
     display: flex;
     flex-direction: column;
     min-height: 0;
-    height: 100%;
+    height: auto;
 }
 
 @keyframes fadeIn {
@@ -1188,19 +1204,20 @@ h1, h2, h3, h4 {
 }
 
 .upload-card-large {
-    max-width: 680px;
-    margin: 3.5rem auto;
+    max-width: 540px;
+    margin: 0.5rem auto 1.5rem auto;
 }
 
 .drop-zone-large {
     border: 2px dashed var(--border-color);
     border-radius: var(--radius-md);
-    padding: 5rem 2.5rem;
+    padding: 2.2rem 1.5rem;
     text-align: center;
+    position: relative;
     cursor: pointer;
     background: rgba(0, 0, 0, 0.15);
     transition: all 0.2s ease;
-    margin: 1.5rem;
+    margin: 0.75rem 1rem;
 }
 
 .drop-zone-large:hover, .drop-zone-large.dragover {
@@ -1210,14 +1227,14 @@ h1, h2, h3, h4 {
 }
 
 .upload-icon-wrapper-large {
-    width: 4.5rem;
-    height: 4.5rem;
+    width: 3.5rem;
+    height: 3.5rem;
     border-radius: 50%;
     background: var(--bg-base);
     display: flex;
     align-items: center;
     justify-content: center;
-    margin: 0 auto 1.5rem;
+    margin: 0 auto 1rem;
     color: var(--text-secondary);
     box-shadow: var(--shadow-sm);
     transition: all 0.25s ease;
@@ -1230,8 +1247,8 @@ h1, h2, h3, h4 {
 }
 
 .upload-icon-large {
-    width: 2.25rem;
-    height: 2.25rem;
+    width: 1.75rem;
+    height: 1.75rem;
 }
 
 .config-grid {
@@ -1259,17 +1276,29 @@ h1, h2, h3, h4 {
 }
 
 @media (max-width: 900px) {
-    body {
+    body:not(.workspace-active) {
         overflow: auto !important;
         height: auto !important;
     }
-    .app-container {
+    body:not(.workspace-active) .app-container {
         height: auto !important;
         flex: none !important;
     }
-    .step-container {
+    body:not(.workspace-active) .step-container {
         height: auto !important;
         flex: none !important;
+    }
+    body.workspace-active {
+        height: 100vh !important;
+        overflow: hidden !important;
+    }
+    body.workspace-active .app-container {
+        height: 100% !important;
+        flex: 1 !important;
+    }
+    body.workspace-active .step-container {
+        height: 100% !important;
+        flex: 1 !important;
     }
     .config-grid {
         grid-template-columns: 1fr;
@@ -1331,4 +1360,82 @@ h1, h2, h3, h4 {
 
 .page-range-input-wrapper .btn {
     white-space: nowrap;
+}
+
+/* URL input styles */
+.upload-divider {
+    display: flex;
+    align-items: center;
+    text-align: center;
+    margin: 0.5rem 1.5rem;
+    color: var(--text-muted, #7e8c9a);
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+}
+
+.upload-divider::before,
+.upload-divider::after {
+    content: '';
+    flex: 1;
+    border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+}
+
+.upload-divider::before {
+    margin-right: 1rem;
+}
+
+.upload-divider::after {
+    margin-left: 1rem;
+}
+
+.url-input-container {
+    margin: 0.5rem 1rem 1rem 1rem;
+    text-align: left;
+}
+
+.url-input-label {
+    display: block;
+    margin-bottom: 0.4rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.url-input-wrapper {
+    display: flex;
+    gap: 0.5rem;
+    position: relative;
+    align-items: center;
+    width: 100%;
+}
+
+.url-input-wrapper .link-icon {
+    position: absolute;
+    left: 0.65rem;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 0.95rem;
+    height: 0.95rem;
+    color: var(--text-muted, #7e8c9a);
+    pointer-events: none;
+    z-index: 5;
+}
+
+.url-input-wrapper .url-input {
+    flex: 1;
+    width: auto;
+    padding: 0.55rem 1rem 0.55rem 2.15rem;
+    font-size: 0.85rem;
+}
+
+.url-input-wrapper .url-submit-btn {
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    min-height: 36px;
 }
